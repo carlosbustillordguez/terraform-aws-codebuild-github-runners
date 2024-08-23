@@ -1,0 +1,50 @@
+name: Common Issues Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+
+      - name: Get changed files
+        id: file_changes
+        run: |
+          export DIFF=$(git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }})
+          echo "Diff between ${{ github.base_ref }} and ${{ github.sha }}"
+          echo "files=$( echo "$DIFF" | xargs echo )" >> $GITHUB_OUTPUT
+
+      # Need to success pre-commit fix push
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Execute pre-commit
+        uses: cloudposse/github-action-pre-commit@v4.0.0
+        env:
+          # We don't want to enforce conventional commits at the commit message level,
+          # it's enforced at the PR title level with pr-title-check.yml
+          SKIP: commitlint,terraform_docs_without_aggregate_type_defaults
+        with:
+          # Push back fixes to the pull request branch due to the 'token' argument
+          token: ${{ secrets.GITHUB_TOKEN }}
+          extra_args: --color=always --show-diff-on-failure --files ${{ steps.file_changes.outputs.files }}
+          git_user_name: pre-commit
+          git_user_email: 20931458+carlosbustillordguez@users.noreply.github.com
+          git_commit_message: "pre-commit fixes"
+      - name: Execute pre-commit check that have no auto-fixes
+        if: always()
+        uses: cloudposse/github-action-pre-commit@v4.0.0
+        env:
+          SKIP: check-added-large-files,check-merge-conflict,check-vcs-permalinks,end-of-file-fixer,trailing-whitespace,check-yaml,check-merge-conflict,check-executables-have-shebangs,check-case-conflict,mixed-line-ending,detect-aws-credentials,detect-private-key,commitlint,terraform_docs_without_aggregate_type_defaults
+        with:
+          extra_args: --color=always --show-diff-on-failure --files ${{ steps.file_changes.outputs.files }}

@@ -1,0 +1,11 @@
+{
+  "line-length": false,
+  "no-inline-html": {
+    "allowed_elements": [
+      "a",
+      "br",
+      "pre",
+      "img"
+    ]
+  }
+}
