@@ -78,7 +78,15 @@ Create a fine-grained personal access token with the following permissions:
 - **Organization permission**:
   - `Webhooks`: Read and write. Grants permission to manage webhooks for an organization.
 
-Then, save the token value in [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html). The new secret must have the following tags:
+Then, save the token value in [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html). The new secret must have the following keys and values (update the `<GH_PAT>` placeholder with the PAT value):
+
+| Key  | Value   |
+|------|---------|
+| `ServerType` | `GITHUB` |
+| `AuthType`| `PERSONAL_ACCESS_TOKEN` |
+| `Token` | `<GH_PAT>` |
+
+and the following tags:
 
 | Key  | Value   |
 |------|---------|
@@ -86,7 +94,24 @@ Then, save the token value in [AWS Secrets Manager](https://docs.aws.amazon.com/
 | `codebuild:source:provider`| `github` |
 | `codebuild:source:type` | `personal_access_token` |
 
-Finally, set the name of the secret as value for the `pat_aws_secret_name` input variable.
+Using AWS CLI (update the `<GH_PAT>` placeholder with the PAT value):
+
+```bash
+export AWS_REGION="eu-west-1"
+
+aws secretsmanager create-secret \
+  --region "$AWS_REGION"\
+  --name 'aws-codebuild-github-runners' \
+  --description 'GitHub fined-access token' \
+  --secret-string '{
+                  "ServerType":"GITHUB",
+                  "AuthType":"PERSONAL_ACCESS_TOKEN",
+                  "Token":"<GH_PAT>"
+                  }' \
+  --tags Key=codebuild:source,Value='' \
+         Key=codebuild:source:type,Value='github' \
+         Key=codebuild:source:provider,Value='personal_access_token'
+```
 
 ### Configuring the CodeBuild Environment
 
