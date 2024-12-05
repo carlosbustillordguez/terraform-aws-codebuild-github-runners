@@ -1,9 +1,9 @@
 # Uncomment if commitlint is used
-default_stages: [commit]
+default_stages: [pre-commit]
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.5.0
+  rev: v5.0.0
   hooks:
     # Git style
     - id: check-added-large-files
@@ -29,7 +29,7 @@ repos:
     - id: detect-private-key
 
 - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
-  rev: v9.10.0
+  rev: v9.19.0
   hooks:
       # Checks if your commit messages meet the conventional commit format
       - id: commitlint
@@ -37,7 +37,7 @@ repos:
         additional_dependencies: ['@commitlint/config-conventional']
 
 - repo: https://github.com/antonbabenko/pre-commit-terraform
-  rev: v1.92.1
+  rev: v1.96.2
   hooks:
     - id: terraform_validate
     - id: terraform_fmt
