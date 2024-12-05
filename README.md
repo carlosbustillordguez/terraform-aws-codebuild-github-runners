@@ -2,9 +2,9 @@
 
 Terraform module to set up [self-hosted GitHub Actions runners](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners) in [AWS CodeBuild](https://docs.aws.amazon.com/codebuild/latest/userguide/welcome.html) containers to process [GitHub Actions](https://docs.github.com/en/actions/writing-workflows/quickstart) workflow jobs.
 
-This module is mainly based in [Use self-hosted GitHub Actions runners in AWS CodeBuild](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner.html) and has been configured to support a [webhook at the organization level](https://docs.aws.amazon.com/codebuild/latest/userguide/github-global-organization-webhook-setup.html).
+This module is mainly based in [Self-hosted GitHub Actions runners in AWS CodeBuild](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-overview.html) and has been configured to support a [webhook at the organization level](https://docs.aws.amazon.com/codebuild/latest/userguide/github-global-organization-webhook-setup.html).
 
-To use GitHub Actions self-hosted runners in CodeBuild, [update your GitHub Actions workflow YAML file in GitHub](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners.html#sample-github-action-runners-update-yaml).
+To use GitHub Actions self-hosted runners in CodeBuild, [update your GitHub Actions workflow YAML file in GitHub](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner.html#sample-github-action-runners-update-yaml).
 
 **Table of Contents:**
 
@@ -15,6 +15,7 @@ To use GitHub Actions self-hosted runners in CodeBuild, [update your GitHub Acti
       - [Fined-grained Personal Access Token Permissions](#fined-grained-personal-access-token-permissions)
     - [Configuring the CodeBuild Environment](#configuring-the-codebuild-environment)
     - [VPC Configuration](#vpc-configuration)
+    - [Label overrides supported with the CodeBuild-hosted GitHub Actions runner](#label-overrides-supported-with-the-codebuild-hosted-github-actions-runner)
   - [Usage](#usage)
   - [Requirements](#requirements)
   - [Providers](#providers)
@@ -35,7 +36,7 @@ The high-level steps to configure a CodeBuild project to run GitHub Actions jobs
 
 1. Create a personal access token to connect the CodeBuild project to GitHub.
 2. Create a CodeBuild project with a webhook and set up the webhook with the `WORKFLOW_JOB_QUEUED` event filter.
-3. [Update your GitHub Actions workflow YAML in GitHub to configure your build environment](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners.html#sample-github-action-runners-update-yaml).
+3. [Update your GitHub Actions workflow YAML in GitHub to configure your build environment](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner.html#sample-github-action-runners-update-yaml).
 
 ## Important Notes
 
@@ -117,7 +118,7 @@ aws secretsmanager create-secret \
 
 The CodeBuild environment is defined by the `codebuild_project_environment` input variable. Default values are suitable for most of the cases.
 
-- Valid values for `codebuild_project_environment.compute_type` can be found in the [official documentation for `aws_codebuild_project` resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#compute_type).
+- Valid values for `codebuild_project_environment.compute_type` can be found in the [official documentation for `aws_codebuild_project` resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#compute_type). See [Build environment compute modes and types](https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html) for furhter information such as memory, vCPUs and disk space.
 - Valid values for `codebuild_project_environment.image` can be found in [Compute images supported with the CodeBuild-hosted GitHub Actions runner](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-yaml.images.html). For the source code see [AWS CodeBuild curated Docker images](https://github.com/aws/aws-codebuild-docker-images/).
 - Valid values for `codebuild_project_environment.type` can be found in the [official documentation for `aws_codebuild_project` resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#type)
 
@@ -129,6 +130,22 @@ This module is designed to create a CodeBuild project inside a VPC and provides 
 - The attached Security Group to the CodeBuild project must provide only outbound access to Internet.
 
 For a full checklist see [best practices for VPCs](https://docs.aws.amazon.com/codebuild/latest/userguide/vpc-support.html#best-practices-for-vpcs).
+
+### Label overrides supported with the CodeBuild-hosted GitHub Actions runner
+
+In your GitHub Actions workflow YAML, you can [provide a variety of label overrides](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html) that modify your self-hosted runner build. Any builds not recognized by CodeBuild will be ignored but will not fail your webhook request.
+
+CodeBuild allows you to provide multiple overrides in a [single label](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html#sample-github-action-runners-update-single-labels), for example:
+
+```yaml
+runs-on: codebuild-<project-name>-${{ github.run_id }}-${{ github.run_attempt }}-<environment-type>-<image-identifier>-<instance-size>
+```
+
+To override the instance size to `BUILD_GENERAL1_MEDIUM`, set
+
+```yaml
+runs-on: codebuild-<project-name>-${{ github.run_id }}-${{ github.run_attempt }}-medium
+```
 
 ## Usage
 
