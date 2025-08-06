@@ -4,18 +4,19 @@ Terraform module to set up [self-hosted GitHub Actions runners](https://docs.git
 
 This module is mainly based in [Self-hosted GitHub Actions runners in AWS CodeBuild](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-overview.html) and has been configured to support a [webhook at the organization level](https://docs.aws.amazon.com/codebuild/latest/userguide/github-global-organization-webhook-setup.html).
 
-To use GitHub Actions self-hosted runners in CodeBuild, [update your GitHub Actions workflow YAML file in GitHub](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner.html#sample-github-action-runners-update-yaml).
-
 **Table of Contents:**
 
 - [Self-hosted GitHub Actions runners in AWS CodeBuild](#self-hosted-github-actions-runners-in-aws-codebuild)
   - [Solution Overview](#solution-overview)
   - [Important Notes](#important-notes)
     - [GitHub Integration](#github-integration)
+      - [GitHub App](#github-app)
       - [Fined-grained Personal Access Token Permissions](#fined-grained-personal-access-token-permissions)
+      - [OAuth App](#oauth-app)
     - [Configuring the CodeBuild Environment](#configuring-the-codebuild-environment)
     - [VPC Configuration](#vpc-configuration)
-    - [Label overrides supported with the CodeBuild-hosted GitHub Actions runner](#label-overrides-supported-with-the-codebuild-hosted-github-actions-runner)
+    - [Using the CodeBuild-hosted GitHub Actions Runner in a GitHub Workflow](#using-the-codebuild-hosted-github-actions-runner-in-a-github-workflow)
+      - [Supported Label Overrides](#supported-label-overrides)
   - [Usage](#usage)
   - [Requirements](#requirements)
   - [Providers](#providers)
@@ -34,13 +35,13 @@ The GitHub self-hosted runners will be created as an ephemeral runner in the rep
 
 The high-level steps to configure a CodeBuild project to run GitHub Actions jobs are as follows:
 
-1. Create a personal access token to connect the CodeBuild project to GitHub.
+1. Set up the [GitHub Integration](#github-integration) on AWS.
 2. Create a CodeBuild project with a webhook and set up the webhook with the `WORKFLOW_JOB_QUEUED` event filter.
-3. [Update your GitHub Actions workflow YAML in GitHub to configure your build environment](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner.html#sample-github-action-runners-update-yaml).
+3. [Update your GitHub Actions workflow YAML in GitHub to configure your build environment](#using-the-codebuild-hosted-github-actions-runner-in-a-github-workflow).
 
 ## Important Notes
 
-- By default CodeBuild logs are stored in AWS CloudWatch in the `/aws/codebuild/<code_project_name>` log group. To change this, set the `input_codebuild_logs_config` input variable.
+- By default CodeBuild logs are stored in AWS CloudWatch in the `/aws/codebuild/<code_project_name>` log group. To change this, set the `codebuild_logs_config` input variable.
 - All resources with tags support, will be tagged with the following tags as default:
   - `Terraform`: indicates the resources is managed by Terraform. Value `true`.
   - `TerraformWorkspace`: indicates the current [Terraform's workspace](https://www.terraform.io/cli/workspaces). If no workspace is used, the value is `default`.
@@ -50,7 +51,7 @@ The high-level steps to configure a CodeBuild project to run GitHub Actions jobs
     ```hcl
     tags = {
       Project = "MyProject"
-      TerraformModule = "MyModule"
+      TerraformModule = "codebuild_github_runners"
     }
     ```
 
@@ -62,63 +63,87 @@ The AWS account that Terraform uses to create CodeBuild webhook must have author
 
 OAuth can be configured by setting the default source credential for CodeBuild in the working region, e.g.: `https://eu-west-1.console.aws.amazon.com/codesuite/codebuild/sourceCredentials/default?provider=github&region=eu-west-1`. Three options are available:
 
-- **GitHub App**: Connect project to GitHub using an AWS managed GitHub App.
-- **Personal access token**: Connect project to GitHub using a personal access token.
-- **OAuth App**: Connect project to GitHub using an OAuth App.
+- [**GitHub App**](#github-app): Connect project to GitHub using an AWS managed GitHub App. **Recommended approach**.
+- [**Personal access token**](#fined-grained-personal-access-token-permissions): Connect project to GitHub using a personal access token.
+- [**OAuth App**](#oauth-app): Connect project to GitHub using an OAuth App.
+
+#### GitHub App
+
+1. [Create a connection using a AWS managed GitHub App](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create-github.html). The name of the connection must be defined as value for the `codeconnections_connection_name` input variable.
+
+2. Set the default source credential for CodeBuild in the working region (e.g.: `https://eu-west-1.console.aws.amazon.com/codesuite/codebuild/sourceCredentials/default?provider=github&region=eu-west-1`) and select "GitHub App" >> pick-up the name of the connection created in the previous step:
+
+    <img src="images/github-app-codebuild-source-cred.png" alt="GitHub PAT for CodeBuild source credential" width="500"/>
 
 #### Fined-grained Personal Access Token Permissions
 
-Create a fine-grained personal access token with the following permissions:
+1. Create a fine-grained personal access token with the following permissions:
 
-- **Repository permissions**:
-  - `Contents`: Read-only. Grants access to private repositories.
-  - `Commit statuses`: Read and write. Grants permission to create commit statuses.
-  - `Webhooks`: Read and write. Grants permission to manage webhooks.
-  - `Administration`: Read and write. Grants administration permissions on repositories.
+      - **Repository permissions**:
+        - `Contents`: Read-only. Grants access to private repositories.
+        - `Commit statuses`: Read and write. Grants permission to create commit statuses.
+        - `Webhooks`: Read and write. Grants permission to manage webhooks.
+        - `Administration`: Read and write. Grants administration permissions on repositories.
 
-- **Organization permission**:
-  - `Webhooks`: Read and write. Grants permission to manage webhooks for an organization.
+      - **Organization permission**:
+        - `Webhooks`: Read and write. Grants permission to manage webhooks for an organization.
 
-Then, save the token value in [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html). The new secret must have the following keys and values (update the `<GH_PAT>` placeholder with the PAT value):
+2. Save the token value in [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html). The name of the Secret must be defined as value for the `github_aws_secret_name` input variable.
 
-| Key  | Value   |
-|------|---------|
-| `ServerType` | `GITHUB` |
-| `AuthType`| `PERSONAL_ACCESS_TOKEN` |
-| `Token` | `<GH_PAT>` |
+    The new secret must have the following keys and values (update the `<GH_PAT>` placeholder with the PAT value):
 
-and the following tags:
+    | Key  | Value   |
+    |------|---------|
+    | `ServerType` | `GITHUB` |
+    | `AuthType`| `PERSONAL_ACCESS_TOKEN` |
+    | `Token` | `<GH_PAT>` |
 
-| Key  | Value   |
-|------|---------|
-| `codebuild:source` | |
-| `codebuild:source:provider`| `github` |
-| `codebuild:source:type` | `personal_access_token` |
+    and the following tags:
 
-Using AWS CLI (update the `<GH_PAT>` placeholder with the PAT value):
+    | Key  | Value   |
+    |------|---------|
+    | `codebuild:source` | |
+    | `codebuild:source:provider`| `github` |
+    | `codebuild:source:type` | `personal_access_token` |
 
-```bash
-export AWS_REGION="eu-west-1"
+    Using AWS CLI (update the `<GH_PAT>` placeholder with the PAT value):
 
-aws secretsmanager create-secret \
-  --region "$AWS_REGION"\
-  --name 'aws-codebuild-github-runners' \
-  --description 'GitHub fined-access token' \
-  --secret-string '{
-                  "ServerType":"GITHUB",
-                  "AuthType":"PERSONAL_ACCESS_TOKEN",
-                  "Token":"<GH_PAT>"
-                  }' \
-  --tags Key=codebuild:source,Value='' \
-         Key=codebuild:source:type,Value='github' \
-         Key=codebuild:source:provider,Value='personal_access_token'
-```
+    ```bash
+    export AWS_REGION="eu-west-1"
+
+    aws secretsmanager create-secret \
+      --region "$AWS_REGION"\
+      --name 'aws-codebuild-github-runners' \
+      --description 'GitHub fined-access token' \
+      --secret-string '{
+                      "ServerType":"GITHUB",
+                      "AuthType":"PERSONAL_ACCESS_TOKEN",
+                      "Token":"<GH_PAT>"
+                      }' \
+      --tags Key=codebuild:source,Value='' \
+            Key=codebuild:source:type,Value='github' \
+            Key=codebuild:source:provider,Value='personal_access_token'
+    ```
+
+3. Set the default source credential for CodeBuild in the working region (e.g.: `https://eu-west-1.console.aws.amazon.com/codesuite/codebuild/sourceCredentials/default?provider=github&region=eu-west-1`) and select "Personal access token" >> "Secrets Manager (recommended)" >> "Existing secret" >> pick-up the previous created Secret:
+
+    <img src="images/github-pat-codebuild-source-cred.png" alt="GitHub PAT for CodeBuild source credential" width="500"/>
+
+#### OAuth App
+
+1. Set the default source credential for CodeBuild in the working region (e.g.: `https://eu-west-1.console.aws.amazon.com/codesuite/codebuild/sourceCredentials/default?provider=github&region=eu-west-1`) and select "OAuth app" >> "Secrets Manager (recommended)" >> "New secret".
+
+    <img src="images/github-oauth-codebuild-source-cred.png" alt="GitHub OAuth Appp for CodeBuild source credential" width="500"/>
+
+2. Click on the "Connect to GitHub" button, and follow the instructions. This basically will connect the AWS account with your GitHub Account and will create Secret on AWS Secret Manager. The name of the created Secret must be defined as value for the `github_aws_secret_name` input variable.
+
+    To review your authorized OAuth apps, navigate to Applications on GitHub, and verify that an application named `AWS CodeBuild (region)` owned by [aws-codesuite](https://github.com/aws-codesuite) is listed.
 
 ### Configuring the CodeBuild Environment
 
 The CodeBuild environment is defined by the `codebuild_project_environment` input variable. Default values are suitable for most of the cases.
 
-- Valid values for `codebuild_project_environment.compute_type` can be found in the [official documentation for `aws_codebuild_project` resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#compute_type). See [Build environment compute modes and types](https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html) for furhter information such as memory, vCPUs and disk space.
+- Valid values for `codebuild_project_environment.compute_type` can be found in the [official documentation for `aws_codebuild_project` resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#compute_type). See [Build environment compute modes and types](https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html) for further information such as memory, vCPUs and disk space.
 - Valid values for `codebuild_project_environment.image` can be found in [Compute images supported with the CodeBuild-hosted GitHub Actions runner](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-yaml.images.html). For the source code see [AWS CodeBuild curated Docker images](https://github.com/aws/aws-codebuild-docker-images/).
 - Valid values for `codebuild_project_environment.type` can be found in the [official documentation for `aws_codebuild_project` resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#type)
 
@@ -131,7 +156,27 @@ This module is designed to create a CodeBuild project inside a VPC and provides 
 
 For a full checklist see [best practices for VPCs](https://docs.aws.amazon.com/codebuild/latest/userguide/vpc-support.html#best-practices-for-vpcs).
 
-### Label overrides supported with the CodeBuild-hosted GitHub Actions runner
+### Using the CodeBuild-hosted GitHub Actions Runner in a GitHub Workflow
+
+To use GitHub Actions self-hosted runners in CodeBuild, [update your GitHub Actions workflow YAML file in GitHub](https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner.html#sample-github-action-runners-update-yaml).
+
+The following GitHub Actions workflow YAML can be used to trigger jobs on the `PUSH` event for the CodeBuild project defined by `<project-name>`:
+
+```yaml
+name: Hello World
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  hello-world:
+    runs-on: codebuild-<project-name>-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - run: echo "Hello World"
+```
+
+#### Supported Label Overrides
 
 In your GitHub Actions workflow YAML, you can [provide a variety of label overrides](https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html) that modify your self-hosted runner build. Any builds not recognized by CodeBuild will be ignored but will not fail your webhook request.
 
@@ -153,11 +198,11 @@ runs-on: codebuild-<project-name>-${{ github.run_id }}-${{ github.run_attempt }}
 module "codebuild_github_runners" {
   source = "../"
 
-  codebuild_project_name        = "ghSelfhostedRunners"
-  codebuild_project_description = "Uses CodeBuild to run GitHub Self-hosted Runners."
-  github_organization_name      = "myorg"
-  pat_aws_secret_name           = "aws-codebuild-github-runners"
-  aws_region                    = "eu-west-1"
+  codebuild_project_name          = "ghSelfhostedRunners"
+  codebuild_project_description   = "Uses CodeBuild to run GitHub Self-hosted Runners."
+  github_organization_name        = "myorg"
+  codeconnections_connection_name = "github-connection"
+  aws_region                      = "eu-west-1"
 
   codebuild_vpc_config = {
     security_group_ids = ["sg-abc"]
@@ -201,15 +246,18 @@ No modules.
 | [aws_iam_policy.codebuild_cw_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.codebuild_s3_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.codebuild_vpc](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
+| [aws_iam_policy.codeconnections](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.secret_manager](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_role.codebuild](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy_attachment.base](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.codebuild_cw_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.codebuild_s3_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.codebuild_vpc](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_role_policy_attachment.codeconnections](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.secret_manager](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
-| [aws_secretsmanager_secret.pat](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret) | data source |
+| [aws_codestarconnections_connection.github](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/codestarconnections_connection) | data source |
+| [aws_secretsmanager_secret.github](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret) | data source |
 
 ## Inputs
 
@@ -221,8 +269,9 @@ No modules.
 | <a name="input_codebuild_project_environment"></a> [codebuild\_project\_environment](#input\_codebuild\_project\_environment) | The CodeBuild environment configuration.<br>  `compute_type`: (Required) Information about the compute resources the build project will use.<br>  `image`: (Required) Docker image to use for this build project.<br>           Valid values include Docker images provided by CodeBuild, DockerHub images and full<br>           Docker repository URIs such as those for ECR.<br>  `type`: (Required) Type of build environment to use for related builds.<br>  `image_pull_credentials_type`: (Optional) Type of credentials AWS CodeBuild uses to pull images in your build.<br>  `privileged_mode`: (Optional) Whether to enable running the Docker daemon inside a Docker container. | <pre>object({<br>    compute_type                = string<br>    image                       = string<br>    type                        = string<br>    image_pull_credentials_type = optional(string, "CODEBUILD")<br>    privileged_mode             = optional(bool, true)<br>  })</pre> | <pre>{<br>  "compute_type": "BUILD_GENERAL1_SMALL",<br>  "image": "aws/codebuild/standard:7.0",<br>  "image_pull_credentials_type": "CODEBUILD",<br>  "privileged_mode": true,<br>  "type": "LINUX_CONTAINER"<br>}</pre> | no |
 | <a name="input_codebuild_project_name"></a> [codebuild\_project\_name](#input\_codebuild\_project\_name) | The name of the CodeBuild build project. | `string` | n/a | yes |
 | <a name="input_codebuild_vpc_config"></a> [codebuild\_vpc\_config](#input\_codebuild\_vpc\_config) | The VPC configuration to provision the CodeBuild Runners.<br>  `security_group_ids`: (Required) Security group IDs to assign to running builds.<br>  `subnets`: (Required) Subnet IDs within which to run builds.<br>  `vpc_id`: (Required) ID of the VPC within which to run builds. | <pre>object({<br>    security_group_ids = list(string)<br>    subnets            = list(string)<br>    vpc_id             = string<br>  })</pre> | n/a | yes |
+| <a name="input_codeconnections_connection_name"></a> [codeconnections\_connection\_name](#input\_codeconnections\_connection\_name) | The name of the connection for the CodeConnection service (formerly CodeStars) that installed the AWS managed GitHub App.<br>  Only set either `github_aws_secret_name` or `codeconnections_connection_name`. | `string` | `""` | no |
+| <a name="input_github_aws_secret_name"></a> [github\_aws\_secret\_name](#input\_github\_aws\_secret\_name) | The name of the AWS Secret with the personal access token with access to GitHub or with the<br>  token access for the GitHub OAuth App installed (see [OAuth App](#oauth-app) section).<br>  Only set either `github_aws_secret_name` or `codeconnections_connection_name`. | `string` | `""` | no |
 | <a name="input_github_organization_name"></a> [github\_organization\_name](#input\_github\_organization\_name) | The name of the GitHub organization to add the webhook for AWS CodeBuild Runners. | `string` | n/a | yes |
-| <a name="input_pat_aws_secret_name"></a> [pat\_aws\_secret\_name](#input\_pat\_aws\_secret\_name) | The name of the AWS Secret Manager secret with the personal access token with access to GitHub. | `string` | `""` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags added to all supported resources. | `map(any)` | `{}` | no |
 
 ## Outputs

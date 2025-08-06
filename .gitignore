@@ -55,6 +55,12 @@ terraform.rc
 # Support for Project snippet scope
 !.vscode/*.code-snippets
 
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
 # Other ignores directories and files
 **/.ssh/*
 module-test/

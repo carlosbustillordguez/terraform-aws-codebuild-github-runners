@@ -92,8 +92,22 @@ variable "github_organization_name" {
   type        = string
 }
 
-variable "pat_aws_secret_name" {
-  description = "The name of the AWS Secret Manager secret with the personal access token with access to GitHub."
+variable "github_aws_secret_name" {
+  description = <<EOT
+  The name of the AWS Secret with the personal access token with access to GitHub or with the
+  token access for the GitHub OAuth App installed (see [OAuth App](#oauth-app) section).
+  Only set either `github_aws_secret_name` or `codeconnections_connection_name`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+
+variable "codeconnections_connection_name" {
+  description = <<EOT
+  The name of the connection for the CodeConnection service (formerly CodeStars) that installed the AWS managed GitHub App.
+  Only set either `github_aws_secret_name` or `codeconnections_connection_name`.
+  EOT
   type        = string
   default     = ""
 }

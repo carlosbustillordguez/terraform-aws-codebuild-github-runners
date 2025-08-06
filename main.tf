@@ -1,10 +1,20 @@
 data "aws_caller_identity" "current" {}
 
-data "aws_secretsmanager_secret" "pat" {
-  count = var.pat_aws_secret_name != "" ? 1 : 0
+# AWS Secret with the personal access token with access to GitHub
+# or AWS Secret with the token access for the GitHub OAuth App installed
+data "aws_secretsmanager_secret" "github" {
+  count = var.github_aws_secret_name != "" ? 1 : 0
 
-  name = var.pat_aws_secret_name
+  name = var.github_aws_secret_name
 }
+
+# The GitHub connection (CodeConnection, formerly CodeStars) that installed the AWS managed GitHub App
+data "aws_codestarconnections_connection" "github" {
+  count = var.codeconnections_connection_name != "" ? 1 : 0
+
+  name = var.codeconnections_connection_name
+}
+
 
 ################################################################################
 # Local Values
@@ -31,7 +41,6 @@ locals {
 ################################################################################
 
 ## CodeBuild Base Policy
-
 resource "aws_iam_policy" "base" {
   name        = "CodeBuildBasePolicy-${var.codebuild_project_name}-${var.aws_region}"
   description = "CodeBuild Base Policy"
@@ -144,7 +153,7 @@ resource "aws_iam_policy" "codebuild_s3_logs" {
 
 ## CodeBuild Secrets Manager Source Credentials Policy
 resource "aws_iam_policy" "secret_manager" {
-  count = var.pat_aws_secret_name != "" ? 1 : 0
+  count = var.github_aws_secret_name != "" ? 1 : 0
 
   name        = "CodeBuildSecretsManagerSrcCredsPolicy-${var.codebuild_project_name}-${var.aws_region}"
   description = "CodeBuild Secrets Manager Source Credentials Policy"
@@ -156,10 +165,40 @@ resource "aws_iam_policy" "secret_manager" {
       {
         "Effect" : "Allow",
         "Resource" : [
-          data.aws_secretsmanager_secret.pat[0].arn
+          data.aws_secretsmanager_secret.github[0].arn
         ],
         "Action" : [
           "secretsmanager:GetSecretValue"
+        ]
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+## CodeBuild CodeConnections Source Credentials Policy
+resource "aws_iam_policy" "codeconnections" {
+  count = var.codeconnections_connection_name != "" ? 1 : 0
+
+  name        = "CodeBuildCodeConnectionsSourceCredentialsPolicy-${var.codebuild_project_name}-${var.aws_region}"
+  description = "CodeBuild CodeConnections Source Credentials Policy"
+  path        = "/"
+
+  policy = jsonencode({
+    "Version" : "2012-10-17",
+    "Statement" : [
+      {
+        "Effect" : "Allow",
+        "Resource" : [
+          data.aws_codestarconnections_connection.github[0].id
+        ],
+        "Action" : [
+          "codestar-connections:GetConnectionToken",
+          "codestar-connections:GetConnection",
+          "codeconnections:GetConnectionToken",
+          "codeconnections:GetConnection",
+          "codeconnections:UseConnection"
         ]
       }
     ]
@@ -252,10 +291,17 @@ resource "aws_iam_role_policy_attachment" "codebuild_s3_logs" {
 }
 
 resource "aws_iam_role_policy_attachment" "secret_manager" {
-  count = var.pat_aws_secret_name != "" ? 1 : 0
+  count = var.github_aws_secret_name != "" ? 1 : 0
 
   role       = aws_iam_role.codebuild.name
   policy_arn = aws_iam_policy.secret_manager[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "codeconnections" {
+  count = var.codeconnections_connection_name != "" ? 1 : 0
+
+  role       = aws_iam_role.codebuild.name
+  policy_arn = aws_iam_policy.codeconnections[0].arn
 }
 
 resource "aws_iam_role_policy_attachment" "codebuild_vpc" {

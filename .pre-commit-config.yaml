@@ -49,6 +49,7 @@ repos:
     - id: terraform_trivy
       args:
         - --args=--skip-dirs="**/.terraform"
+        - --args=--skip-dirs="**/module-test"
         # Uncomment to exclude download modules from the scan
         # - --args=--tf-exclude-downloaded-modules
     # A Pluggable Terraform Linter
